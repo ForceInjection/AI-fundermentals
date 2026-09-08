@@ -11,6 +11,8 @@
 > **新负载**：Agent 流量正在取代 Chat 成为主要负载——KV 生命周期错配、调度语义失真、会话粘性、容量公式失效四个连锁问题，以及两引擎源码级现状与「保留 vs 重算」的系数变化。详见 **[当 Agent 流量成为推理系统的主要负载](agent_serving/agent-workload-serving.md)**（vLLM `43d691ec6b` / SGLang `f7101b0ae6` 源码验证）。
 >
 > **输出合法性税**：同系列姊妹篇——[约束解码的性能账单：vLLM 与 SGLang 的结构化输出实现拆解](agent_serving/constrained-decoding-engines.md)，编译/每步/交互三笔账单 + 双引擎逐项对照 + jump-forward 重分词差异。
+>
+> **线性注意力**：没有 KV Cache 的模型来了——delta-rule 一脉（KDA/Gated DeltaNet，Qwen3-Next 与 Kimi K3 都在其中）落地后，prefill 串行化、前缀缓存重写为状态检查点、状态池成硬并发上限。系列入口：[线性注意力与推理系统](linear_attention/README.md)（总览 + 机制/调度/状态语义三篇深挖）。
 
 ---
 
