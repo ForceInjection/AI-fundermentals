@@ -83,11 +83,12 @@ Agent 的能力边界很大程度上由它能调用哪些工具决定。以 MCP 
 
 ### 2.4 基础设施 (Agent Infrastructure)
 
-Agent Infra 是「让 Agent 能真正可靠运行、能操作真实世界、能被规模化托管」的那层底座——沙箱隔离、执行环境、编排引擎、运维接入等环节决定了系统能否从 demo 走向生产。本节盘点了 OpenHarness、Kagent、Agent Sandbox 等主流方案的架构思路。
+Agent Infra 是「让 Agent 能真正可靠运行、能操作真实世界、能被规模化托管」的那层底座——沙箱隔离、执行环境、编排引擎、运维接入等环节决定了系统能否从 demo 走向生产。本节盘点了 DeepSeek Harness、OpenHarness、Kagent、Agent Sandbox 等主流方案的架构思路。
 
 - [AI Agent 基础设施——三个决定性层次：工具、数据、编排](./agent_infra/docs/ai-agent-infra-stack.md) - 全面梳理工具层、数据层与编排层的三层架构体系。
 - [AI Agent 基础设施的崛起](./agent_infra/docs/the-rise-of-ai-agent-infrastructure.md) - 分析基础设施生态的演进趋势、核心玩家与未来投资方向。
 - [OpenHarness 深入浅出：解密开源智能体基础设施](./agent_infra/docs/openharness-deep-dive.md) ([配套 PPT](./agent_infra/docs/openharness-deep-dive.pptx)) - 大型语言模型 (LLM) 在推理与生成能力上取得了突破性进展，但它们本身受限于静态的上下文窗口，无法直接与真实世界进行交互。要让模型成为能够自主解决复杂任务的工程化智能体 (Agent) ，必须为其配备执行动作的工具、持久化的记忆以及安全隔离的运行边界。这就是“智能体基础设施” (Agent Harness) 的核心使命。
+- [一切皆插件：DeepSeek Harness 是怎么把 Agent 装起来的](./agent_infra/docs/deepseek-harness-deep-dive.md) - 拆解 DeepSeek 开源的 Agent 框架 dsh：基于 Cordis 的「一切皆插件」架构（连 agent loop 本身都是插件）、profile/bundle 分层组装、事件溯源会话日志、四个内置预设与能力 seam，以及它在开发者预览阶段必须正视的四条边界；文末推荐《Harness工程实战》一书。
 - [Agent Sandbox 的演进与设计范式](./agent_infra/docs/agent-sandbox-design.md) ([配套 PPT](./agent_infra/docs/agent-sandbox-design.pptx)) - 探讨 Agent Sandbox 的核心设计理念，对比 OpenShell、Sandlock 等沙箱方案，揭示从“硬件级隔离”向“策略优先”演进的技术趋势。
 - [深度解析 Kagent：从零打造 Kubernetes 运维智能体](./agent_infra/docs/deep-dive-kagent-k8s-ops-agent.md) ([配套 PPT](./agent_infra/docs/deep-dive-kagent-k8s-ops-agent.pptx)) - 深度解析 Kagent 的核心架构与工作机制，并以“构建阿里云 ACK 运维智能体”为实战案例，展示大模型与运维工具的编排。
 - [云原生 AI Agent 基础设施：OpenClaw Operator 架构深度解析](./agent_infra/docs/openclaw-operator-deep-dive.md) - 深入探讨 OpenClaw Kubernetes Operator 的核心架构设计与工程实践，涵盖从 Server-Side Apply 的冲突解决到 StatefulSet 的持久化绑定，以及容器级软隔离与进程级沙箱的安全边界设计。
