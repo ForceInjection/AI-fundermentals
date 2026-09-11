@@ -4,6 +4,8 @@ KV Cache 存的是每一层每个 token 的 Key 和 Value。但 "Key" 和 "Value
 
 本文以 LLaMA-2 70B (GQA)、DeepSeek-V3 (MLA)、DeepSeek-V4 (CSA/HCA) 为主要实例，给出每种注意力类型下 KV Cache 的精确形状和显存占用，以及 vLLM 当前的支持状态。MHA 和 MQA 以假设配置展示公式，实际模型参见 §六。
 
+> **2026-09-11 订正**：HCA 全称应为 **Heavily Compressed Attention**（此前误作 Hybrid Compressed Attention），且其定义为「128× 重度压缩后**放弃稀疏选择、直接做全量注意力**」——与 CSA（4× 压缩 + top-k 稀疏选择）按层交替排布，两者是不同的层类型，而非同一种层的两种压缩策略混用（此前 §5.2 的表述有误）。依据 DeepSeek-V4 技术报告（arXiv:2606.19348）§2.3。
+
 ---
 
 ## 一、MHA（多头注意力）：每个 Q head 配一组 K/V
@@ -121,9 +123,9 @@ MLA 的压缩效果来自两个机制：(1) K 和 V 共享一个下投影矩阵 
 
 ---
 
-## 五、CSA / HCA（压缩稀疏注意力 / 混合压缩注意力）：DeepSeek V4 的 KV 多级压缩
+## 五、CSA / HCA（压缩稀疏注意力 / 重度压缩注意力）：DeepSeek V4 的 KV 多级压缩
 
-DeepSeek V4 在 MLA 的基础上引入了一个更激进的思路：**不仅压缩每个 token 的 K/V 维度，还压缩 token 的数量。** 这就是 CSA（Compressed Sparse Attention）和 HCA（Hybrid Compressed Attention）。
+DeepSeek V4 在 MLA 的基础上引入了一个更激进的思路：**不仅压缩每个 token 的 K/V 维度，还压缩 token 的数量。** 这就是 CSA（Compressed Sparse Attention）和 HCA（Heavily Compressed Attention）——两者按层交替排布，构成 V4 的混合注意力。
 
 ### 5.1 CSA：把连续多个 token 的 KV 合并为一个
 
@@ -144,9 +146,9 @@ c128a 压缩后（每 128 个 token → 1 个压缩 token，无重叠）:
 
 压缩 token 的值是原始 token K/V 的加权和——不是简单平均，而是可学习的投影权重。注意力计算时，Q 直接与压缩后的 K 做点积，跳过了逐 token 展开的步骤。
 
-### 5.2 HCA：混合使用多种压缩策略
+### 5.2 HCA：重度压缩后直接做稠密注意力
 
-V4 的不同层使用不同的压缩策略——部分层使用温和的 c4a 保留更多细节，大部分层使用激进的 c128a 最大化压缩。所有层都附带 128-token sliding window 保留局部信息。这就是 HCA（Hybrid Compressed Attention）：
+CSA 与 HCA 是 V4 混合注意力的两个分支，按层交替排布：CSA 层（c4a）用 4× 压缩保留更多细节，再叠加 top-512 的稀疏选择；HCA 层（c128a）用 128× 压缩把序列压到足够短，于是**放弃稀疏选择、直接做全量注意力**——结构上比 CSA 少了整个 indexer 与 top-k 选择器。所有层都附带 128-token sliding window 保留局部信息。这就是 HCA（Heavily Compressed Attention）：
 
 ```text
 V4 共 61 层，每层均带 128-token sliding window：

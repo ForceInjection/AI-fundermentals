@@ -1,6 +1,8 @@
 # 稀疏注意力分类学：读什么、不读什么、以及为什么读得少不等于存得少
 
 > 稀疏注意力方法有十几个名字——Sliding Window、Longformer、StreamingLLM、Vegas、NSA、H2O、CSA、Linformer——但它们都在回答同一个问题：对于当前 query，全量 KV 中哪些真正值得算注意力？本文按决策时机将稀疏注意力分为三条路线：计算前固定模式、计算中动态选择、先压缩再近似计算。每条路线的取舍不同，但共享同一个被普遍忽视的约束——读得少不等于存得少。
+>
+> **2026-09-11 订正**：HCA 全称应为 **Heavily Compressed Attention**（此前误作 Heavy Compressed Attention）；V4-Pro 各层类型数量为 **30 个 c4a + 31 个 c128a = 61 层**（此前误作「两层各有 30 个」）。依据 DeepSeek-V4 技术报告（arXiv:2606.19348）与官方 `config.json` 中 `compress_ratios` 的计数。
 
 ---
 
@@ -135,13 +137,13 @@ Linformer[^5] 用两个可学习的投影矩阵 E 和 F（形状为 n × k，k �
 
 ### 4.3 CSA/HCA：DeepSeek V4 的压缩-选择混合系统
 
-CSA（Compressed Sparse Attention）和 HCA（Heavy Compressed Attention）代表了压缩近似路线的当前工程巅峰。两者共同构成了 DeepSeek V4 的注意力系统。
+CSA（Compressed Sparse Attention）和 HCA（Heavily Compressed Attention）代表了压缩近似路线的当前工程巅峰。两者按层交替排布，共同构成了 DeepSeek V4 的注意力系统。
 
 **CSA（c4a 层，30 层）**：先将 KV 做 4× 压缩（每 4 个连续 token 的 K 和 V 压缩为 1 个），然后对压缩后的 token 应用 DSA 选出 top-512 做注意力。CSA 同时做了压缩（c4a 将 n 缩小到 n/4）和动态选择（DSA 从 n/4 中再选 top-512）。CSA 的名字本身就说明了这一点：Compressed（压缩）+ Sparse Attention（稀疏注意力，即 DSA）。原始 token 数：250K → 压缩后：~62.5K → DSA 选择后：512 个压缩 token。计算量相对全量注意力节省约 1500×。
 
-**HCA（c128a 层，30 层）**：压缩更激进（128×），1M token 压缩后仅约 8K 条目。因为压缩后的条目数已足够少，HCA 不做稀疏选择——对这 8K 个压缩 token 直接做全量注意力。计算量相对全量注意力节省约 128×。
+**HCA（c128a 层，31 层）**：压缩更激进（128×），1M token 压缩后仅约 8K 条目。因为压缩后的条目数已足够少，HCA 不做稀疏选择——对这 8K 个压缩 token 直接做全量注意力，结构上比 CSA 少了整个 indexer 与 top-k 选择器。计算量相对全量注意力节省约 128×。
 
-**CSA 和 HCA 的分工**：CSA 负责「检索」——在 4× 压缩的粗粒度表示上做 top-512 的精确选择，定位关键信息的位置。HCA 负责「整合」——在 128× 压缩的极粗粒度表示上做全量注意力，获得全局上下文。两层各有 30 个 transformer layer，交替排布。
+**CSA 和 HCA 的分工**：CSA 负责「检索」——在 4× 压缩的粗粒度表示上做 top-512 的精确选择，定位关键信息的位置。HCA 负责「整合」——在 128× 压缩的极粗粒度表示上做全量注意力，获得全局上下文。V4-Pro 共 61 层，**30 个 c4a 层 + 31 个 c128a 层**，交替排布（V4-Pro 官方 config.json 的 `compress_ratios` 计数：128 出现 31 次、4 出现 30 次）。
 
 关于 CSA/HCA 的完整架构演进——它们如何从 V2 的 MLA、V3.2 的 NSA 逐步演化而来——参见 [DeepSeek 注意力架构进化：从 MLA 到 CSA/HCA](../../../vllm/module_analysis/deepseek_attention_evolution_mla_to_csa_hca.md)。本节仅聚焦于 CSA/HCA 在稀疏注意力分类框架中的位置：它们代表了压缩近似的工程成熟形态。
 
