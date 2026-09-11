@@ -8,6 +8,8 @@
 
 > **前瞻**：DeepSeek-V4 和 Kimi K3 从架构层面对 attention 做了根本性改造，KV Cache 从 250GB 降到 5GB，旧叙事终结。但新架构带来了新的系统挑战。详见 **[当百万 Token KV Cache 从 250GB 降到 5GB](post-kv-cache-era-challenges.md)**（对照 vLLM/SGLang 源码 ✓，含 39 处代码验证）。
 >
+> **续篇 · KV 压缩推到极限**：一个月后 DeepSeek 发布 V4.1-Flash，全局 KV 再压到 1/4、持久化压到 1/8，并推翻了前篇三处判断（跨层共享「无意义」、跨类型前缀缓存「未解决」、mHC 迭代「无法被 kernel fusion 覆盖」）。详见 **[把 KV Cache 压缩推到极限：DeepSeek-V4.1-Flash 技术报告精读](deepseek-v41-flash-kv-compression.md)**（报告 §章节 + 官方 `config.json` 双向核对）。
+>
 > **新负载**：Agent 流量正在取代 Chat 成为主要负载——KV 生命周期错配、调度语义失真、会话粘性、容量公式失效四个连锁问题，以及两引擎源码级现状与「保留 vs 重算」的系数变化。详见 **[当 Agent 流量成为推理系统的主要负载](agent_serving/agent-workload-serving.md)**（vLLM `43d691ec6b` / SGLang `f7101b0ae6` 源码验证）。
 >
 > **输出合法性税**：同系列姊妹篇——[约束解码的性能账单：vLLM 与 SGLang 的结构化输出实现拆解](agent_serving/constrained-decoding-engines.md)，编译/每步/交互三笔账单 + 双引擎逐项对照 + jump-forward 重分词差异。
