@@ -10,6 +10,8 @@
 
 ## 一、先把账算清楚：890 B/token 是什么口径
 
+整篇报告在回答一个问题：**Agent 的上下文越拉越长，KV Cache 的成本怎么压下来？** 长程 Agent 让负载越来越 input-heavy，prefill 的计算、KV 的存储、把 KV 搬来搬去的带宽，三样一起构成部署成本的主要瓶颈。报告的解法全在这三条线上。
+
 ### 1.1 一个 token 在每层产生哪些 KV
 
 V4/V4.1 除最前两层只有 SWA 之外，每一层都有两条注意力分支，各自产生自己的 KV：
@@ -58,6 +60,12 @@ V4 的持久化 KV
 
 1/4 是 global 分支的 KV 本身压到 V4-Flash 四分之一的比例（架构 + 精度），1/8 是再叠加「SWA KV 退出持久层」之后的部署结果。
 
+报告 Figure 1(b) 把这条曲线拉长到了整个世代，逐代绝对值是：V1 的 **389,120** 字节/token、V3.2 的 48,068、V4-Flash 的 3,514，到 V4.1-Flash 只剩 **890**。据此报告给出两个倍数：相对 V4-Flash 约 1/4，相对 V1 约 **1/437**。
+
+![历代 DeepSeek 模型的全局 KV Cache 每 token 体积](assets/deepseek-v41-fig1b-kv-per-token.png)
+
+_图源：DeepSeek-V4.1-Flash 技术报告 Figure 1(b)。_
+
 不对称激活（prefill 8B、decode 16B）则对着 Agent 负载的形态设计：输入重、输出轻。报告反复强调这一点：长程 Agent 让工作负载越来越 **input-heavy**，prefill 侧的参数激活量因此被单独拿出来优化。
 
 仓库里记录过 vLLM 官方博客的一组数据：V4 在 1M 上下文、bf16 下约 9.62 GiB 每序列（[vLLM 中的 DeepSeek V4](vllm/module_analysis/deepseek_v4_attention_support.md) §8.7 倍节省估算背后的算术）。它和 890 B/token 不能相除，两者不是同一件事：
@@ -97,7 +105,7 @@ _图源：DeepSeek-V4.1-Flash 技术报告 Figure 2。_
 
 ---
 
-## 二、报告给出的坐标系：KV 成本的三个乘性维度
+## 二、三个乘性维度：报告给的 KV 成本坐标系
 
 这是整篇报告理论价值最高的一段（§2.3）。它把 KV 存储拆成三个**相乘**的维度：
 
@@ -153,7 +161,7 @@ O(N·L)  →  O(N·L/2 + n_win·L/2)  ≈  O(N·L/2)
 
 ---
 
-## 四、CSA2：三种模式，八层干活
+## 四、CSA2：三档模式，38 层里只有 8 层真干活
 
 CSA2 把每个层的角色**静态**分成三种（§2.3.1）：
 
@@ -168,6 +176,8 @@ CSA2 把每个层的角色**静态**分成三种（§2.3.1）：
 ![CSA2 的三种工作模式：Full / Reindex / Reuse](assets/deepseek-v41-fig4-csa2-modes.png)
 
 _图源：DeepSeek-V4.1-Flash 技术报告 Figure 4。看颜色即可分清「哪些是本层算的」：绿 = 本层计算，黄 = 复用最近一个 Full Mode 层的 main KV 与 indexer K，红 = 复用最近一个产索引层（Full 或 Reindex）的 Top-K 索引。Reindex 模式的 indexer Q 是绿的（自己重打分），所以它没有红块。_
+
+这套分工可以一句话概括：**4 层产 KV，4 层重选，剩下 30 层搭便车。**
 
 实际分配（§4.2.1，与 config 一致）：
 
@@ -265,6 +275,8 @@ CED 的 decoder 侧同理：从 encoder 出来之后，decoder 各层的 SWA KV 
 
 > This bounded replay is the cornerstone of the design: it turns a catastrophic miss into a graceful, inexpensive degradation.
 
+换成中文就是这手棋的全部价值：**把一次灾难性的缓存未命中，换成一次廉价的、有界的重算。**
+
 ### 7.3 与仓库里既有判断的冲突
 
 [post-KV-cache 篇](post-kv-cache-era-challenges.md) 把「跨类型前缀缓存」列为**需要解决的硬缺口**，依据是 vLLM 代码里的限制：
@@ -285,7 +297,7 @@ V4.1 没有去实现通用的多类型前缀缓存，而是**让前缀缓存只�
 
 ---
 
-## 八、其余工程改动
+## 八、三处配套改动：mHC、Engram、DSpark
 
 **Single-Pass mHC（§2.4.1）**。V4 的 mHC 在相邻 block 之间维护 n 条残差流，更新公式分三步，实现上是三个 kernel 串行（数据依赖决定）：
 
@@ -301,7 +313,7 @@ X̂_l = A_l X_l                              输入混合
 X_{l+1} = B_l X_l + C_l F_l(A_{l-1} X_l)
 ```
 
-依赖消失后，残差流的每一块 tile 可以立即同时用于输入混合和系数预测。部署侧再用 **Mega-mHC** 把三个 kernel 融成一个，拿到理想的 `(n+1)d` 读 + `(n+1)d` 写，流量减半。config 里的 `hc_mult = 4`、`hc_sinkhorn_iters = 20` 与前文一致。
+**相当于把依赖关系整体挪开一格**，残差流的每一块 tile 于是可以立即同时用于输入混合和系数预测。部署侧再用 **Mega-mHC** 把三个 kernel 融成一个，拿到理想的 `(n+1)d` 读 + `(n+1)d` 写，流量减半。config 里的 `hc_mult = 4`、`hc_sinkhorn_iters = 20` 与前文一致。
 
 > [post-KV-cache 篇](post-kv-cache-era-challenges.md) 对 mHC 的判断有点摇摆：§6.4 说 fused kernel 已经覆盖，§6.2 末尾又留了一句「可能无法被现有推理引擎的 kernel fusion 覆盖」。V4.1 回答的是后一个问题——不是覆盖不了，而是要先改掉依赖关系。
 
@@ -464,4 +476,5 @@ CSA2 的三个乘性维度也是同一路数：先搭一个坐标系，再找出
 - DeepSeek-AI, [DeepSeek-V4: Towards Highly Efficient Million-Token Context Intelligence](https://arxiv.org/abs/2606.19348), arXiv:2606.19348, 2026——HCA 定义与前代架构
 - vLLM, [DeepSeek V4 支持公告](https://vllm.ai/blog/deepseek-v4)——9.62 GiB/1M 序列的 bf16 估算与混合 KV 缓存实现
 - Sun et al., [You Only Cache Once (YoCo)](https://arxiv.org/abs/2405.05254), 2024——CED 的灵感来源
+- Xie et al., [mHC: Manifold-Constrained Hyper-Connections](https://arxiv.org/abs/2512.24880), arXiv:2512.24880, 2025——V4 引入、V4.1 改为 Single-Pass 的残差流方案
 - Rouhani et al., [Microscaling Data Formats for Deep Learning](https://arxiv.org/abs/2310.10537), arXiv:2310.10537, 2023——MXFP4 格式定义
