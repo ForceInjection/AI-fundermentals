@@ -5,6 +5,8 @@
 > 它还推翻了那篇文章里的一个判断。当时我们在复用价值表里写过：**Cross-Layer 共享，基本无意义**，理由是压缩后的单层 KV 已经极小。V4.1 的核心创新恰恰是跨层共享。
 >
 > 2026-09 | 基于 DeepSeek-V4.1-Flash 技术报告（[`deepseek-ai/DeepSeek-V4.1-Flash`](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)，51 页）与官方 `config.json` 逐条核对；benchmark 数字均为**厂商口径**。report 章节以 § 标注，config 字段以 `等宽` 标注。
+>
+> **2026-09-12 补**：§十一 补入两个引擎的落地形态（vLLM recipe 2026-09-11 版、SGLang cookbook `6657f7d8`），并据此订正该节原先「引擎侧没有公开信息」的说法。那句是初稿只依据技术报告下的结论，而 vLLM 的 recipe 早在 2026-09-09 就已存在——是没查证，不是当时没有。
 
 ---
 
@@ -250,7 +252,7 @@ RoPE 保范数 → 旋转后最大绝对值 ≤ √512 ≈ 22.6
 
 ## 七、SWA Bounded Replay：把「未命中」变便宜
 
-§3.2 是整篇报告里最值得看的一节（§3.2）。原因倒不在机制本身，而在它换个问法问问题：别的章节都在优化存储，这一节先问「这项缓存值不值得存」。
+§3.2 是整篇报告里最值得看的一节。原因倒不在机制本身，而在它换个问法问问题：别的章节都在优化存储，这一节先问「这项缓存该不该存」。
 
 ### 7.1 V4 的困境
 
@@ -353,7 +355,7 @@ X_{l+1} = B_l X_l + C_l F_l(A_{l-1} X_l)
 - **任务合成**：任务定义为三元组 (problem, environment, verification system)，按难度与正确性两维打分，并用这个分数迭代训练模型自己造任务。Coding Agent 那条产线是多 agent 协作：判定可行性、选 commit/turn、生成 fail-to-pass 与 pass-to-pass 评估点、搭隔离容器、自测、**清除泄漏痕迹**、再交由独立的质检 agent 审查 hackability。
 - **DSec**（DeepSeek Elastic Compute）：为跑**数百万并发 sandbox** 自建的平台。分片化 + 放弃强一致（节点侧本地硬准入校验）换可扩展性；sub-NUMA 分区让单物理节点的并发容器从约 1000 提升到 **2500 以上**。报告也列了真实攻击案例：XFS 权限问题、AppArmor 非法内存访问、包镜像服务答案泄漏。
 - **推理努力可控（Reasoning effort，§5.1.4）**：在 system prompt 前置 `Reasoning Effort: {effort} (range 1–100)`。训练上关键的一点是**不同 effort 之间不直接比较**：同一 (prompt, effort) 内的采样组成 subgroup，组内均值中心化算 advantage；effort 之间的行为差异完全由 reward 里的长度惩罚项携带，其衰减参数控制分离程度。结果是单一 checkpoint 可以在 cost-quality 前沿上移动，生产 API 提供 max=100 / high=75 / low=50 三档。
-- **异步 RL 基础设施（§5.2）**：rollout 与 training 同设备 colocate、时分复用，训练可抢占 rollout。dispatch 粒度最终选了最细的 **sample-level**（batch-level 震荡剧烈，prompt-level 在长尾样本上易 stall）。其中有一处做推理的人会特别关心：**KV cache 与 expert routing 按 token 粒度持久化**，恢复时直接复用、免 re-prefill；同一机制也用来响应集群抢占信号。此外，跨 checkpoint 的样本用 **concatenated routing-replay**（拼接各 rollout 段的专家路由）而不是丢弃重算。
+- **异步 RL 基础设施（§5.2）**：rollout 与 training 同设备 colocate、时分复用，训练可抢占 rollout。dispatch 粒度最终选了最细的 **sample-level**（batch-level 震荡剧烈，prompt-level 在长尾样本上易 stall）。其中有一处做推理的人会特别关心：**KV cache 与 expert routing 按 token 粒度持久化**，恢复时直接复用、免 re-prefill；同一机制也用来响应集群抢占信号。跨 checkpoint 的样本则用 **concatenated routing-replay**（拼接各 rollout 段的专家路由）而不是丢弃重算。
 - **大规模 OPD**：最后一阶段做 full-vocabulary on-policy distillation，用了 **40+ 个 teacher 模型**，支持教师架构异构，切换成本可忽略。
 
 ---
@@ -414,7 +416,26 @@ effort 25 → 100：8 个推理密集 benchmark 平均 Pass@1   67.1% → 76.3%
 
 **报告自己承认的**（§6）：CSA2 的潜在选择错误、SWA Bounded Replay 的近似状态重构，都可能在**未测边界**上导致能力退化。内部评测没观察到系统性下降，但「no finite test suite can cover every extreme input」。后续的重点是长上下文稀疏检索、以及缓存恢复边界处的 SWA 状态重构。
 
-**报告没有回答的：第三方引擎怎么接。** 报告 §3.2 讲了 DeepSeek 自研推理系统的实现（15/11 个 kernel、EPD 分离、持久化 KV 管理与 SWA Bounded Replay），但没有涉及外部引擎的落地形态。CSA2 的三模式分派、层级索引器、FP4 main KV、SWA Bounded Replay 在 vLLM / SGLang 里各自长什么样，目前没有公开信息。作为对照，V4 这边仓库里记录得比较细：混合 KV 缓存用逻辑块 256 个原生 token 位置、按 `block_size × compress_ratio × per_entry_size` 归并成三种页面大小桶、压缩器状态注册为滑动窗口规范（[vLLM 中的 DeepSeek V4](vllm/module_analysis/deepseek_v4_attention_support.md)）。V4.1 的对应实现目前是空白，等引擎侧的消息。
+**引擎侧已经接上了**（以下依据 2026-09-12 抓取的 vLLM recipe 与 SGLang cookbook）。
+
+报告 §3.2 只讲了 DeepSeek 自研推理系统的实现（15/11 个 kernel、EPD 分离、持久化 KV 管理与 SWA Bounded Replay），没有涉及第三方引擎。两个引擎现在的落地形态是：
+
+| 引擎   | 镜像                                                    | 已验证硬件                          |
+| ------ | ------------------------------------------------------- | ----------------------------------- |
+| vLLM   | `vllm/vllm-openai:deepseekv41-flash-0909`               | H200 / GB200 / GB300 / MI350X       |
+| SGLang | `lmsysorg/sglang:dev-dsv41`（AMD 为 `dev-dsv41-mi35x`） | H200 / B200 / B300 / GB300 / MI350X |
+
+**两边都没有 pip wheel。** vLLM 的 recipe 里 `dependencies` 字段是空的，`pip: false`：所有依赖被固化进那一个专用镜像，因为架构要用到的自定义 kernel（DSA indexer、FP4 KV、CSA2 的跨层复用）不在上游。
+
+报告里这几个机制在引擎侧的样子：
+
+- **SWA Bounded Replay**：SGLang 已经做成显式开关 `--enable-decoder-swa-bounded-replay`，对它的四条约束与报告逐条对应：只验 decode 路径、按设计拒绝 prompt logprobs、与完整 prefill 数值不等价、与 prefill CUDA graph 和 DP attention 互斥。vLLM 的 recipe（2026-09-11 版）没有暴露对应旋钮。
+- **Engram**：SGLang 默认按行分片加载到 TP 组，每层一次 all-reduce；`SGLANG_ENABLE_DSV41_ENGRAM_HOST_TABLE=1` 可改成一份 host 共享副本，两次 all-reduce 消失、腾出的 HBM 给 KV 池，且**输出 bitwise 不变**。代价是 host RAM、更长的加载，以及需要大页支撑。
+- **CSA2 与 FP4 KV**：两个引擎都收进了自动选择的后端，不暴露给用户。SGLang 明确警告不要手动覆盖 `--attention-backend` / `--moe-runner-backend` / `--fp8-gemm-backend`，覆盖会把 32 宽的 ue8m0 block 打到 Triton fallback，吃掉大部分 bs=1 吞吐。
+
+**一处引擎自陈的局限**：SGLang cookbook 写明「output is not bitwise stable across batch composition today」，且 `--enable-deterministic-inference` 在该后端被拒绝。同一个请求在不同 batch 组成下输出可能不同。对做回归测试与结果复现的人来说，这是条硬约束。
+
+作为对照，V4 这边仓库里记录得更细：混合 KV 缓存用逻辑块 256 个原生 token 位置、按 `block_size × compress_ratio × per_entry_size` 归并成三种页面大小桶、压缩器状态注册为滑动窗口规范（[vLLM 中的 DeepSeek V4](vllm/module_analysis/deepseek_v4_attention_support.md)）。
 
 **对我们这边判断的修正。** 连同开头说的跨层共享，一共三处需要更新：
 
@@ -434,7 +455,7 @@ V4 面对的困境是「某项缓存存不下」，常规做法是优化存储�
 
 CSA2 的三个乘性维度也是同一路数：先搭一个坐标系，再找出哪个维度还有空间。
 
-至于这些数字能不能兑现成部署成本，还要看引擎侧怎么接。这部分报告没有覆盖，也正是接下来要看的地方。
+至于这些数字能不能兑现成部署成本，还要看引擎侧怎么接。报告没有覆盖这部分，但两个引擎的落地形态已经能查到了（见 §十一）。
 
 ---
 
@@ -467,6 +488,8 @@ CSA2 的三个乘性维度也是同一路数：先搭一个坐标系，再找出
 | `deepseek-ai/DeepSeek-V4.1-Flash` `config.json` | 全部架构参数的独立核对                                     | `compress_ratios`、`kv_source_layer_ids`、`index_source_layer_ids`、`candidate_*`、`engram_*`、`dspark_*`、`hc_*` |
 | `deepseek-ai/DeepSeek-V4-Pro` `config.json`     | V4-Pro 层类型计数（30 c4a + 31 c128a）                     | `compress_ratios`                                                                                                 |
 | DeepSeek-V4 技术报告（arXiv:2606.19348）        | HCA 全称与定义                                             | §2.3.2                                                                                                            |
+| vLLM recipe `DeepSeek-V4.1-Flash.yaml`          | 镜像、显存门槛、已验证硬件、可选 flag、PD 分离布局         | 全文（2026-09-11 版）                                                                                             |
+| SGLang cookbook `DeepSeek-V4_1.mdx`             | SWA Bounded Replay 开关、Engram host table、后端解析与限制 | §1、§2（`6657f7d8`，2026-09-12）                                                                                  |
 
 ---
 
