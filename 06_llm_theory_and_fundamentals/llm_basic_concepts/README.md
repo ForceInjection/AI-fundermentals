@@ -29,6 +29,7 @@
 
 - **[混合专家 (MoE)](moe/mixture_of_experts_moe_visual_guide.zh-CN.md)** — 稀疏激活、专家路由与负载均衡，如何让模型参数量增长而不线性增加推理成本。
 - **[Scaling Laws](scaling_laws/scaling_laws.md)** — Kaplan → Chinchilla → MoE 三代缩放定律的演进，以及「数据墙」与推理时间 Scaling 的前沿探索。
+- **[把轨迹当状态：推理时间 Scaling 的一个新维度](scaling_laws/test_time_scaling.md)** — 采样、长度、搜索、迭代四类做法都在「多算」，而这篇论文（Trace as State, arXiv:2609.02702）问的是「已经花掉的算力，产出该怎么放」：同一份推理轨迹，放在长上下文前面比放在后面，27 个实验组合赢下 26 个，GraphWalks 上把 DeepSeek V4 Pro 从 29.2% 拉到 81.8%。
 - **[模型量化 (Quantization)](quantization/visual_guide_to_quantization.md)** — FP16 / INT8 / INT4 / GPTQ / AWQ 等量化路径的图解解析，以及精度—性能的折中决策。
 
 ## 4. 模型文件格式

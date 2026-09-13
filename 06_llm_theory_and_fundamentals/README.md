@@ -16,6 +16,7 @@
 - **[嵌入 (Embedding)](llm_basic_concepts/embedding/README.md)** — 从 Bag-of-Words / TF-IDF 到 Transformer 句向量的演进，覆盖距离度量、降维可视化与 RAG/聚类/分类等下游用法。
 - **[混合专家 (MoE)](llm_basic_concepts/moe/mixture_of_experts_moe_visual_guide.zh-CN.md)** — 稀疏激活架构如何在不线性放大推理成本的前提下扩展参数规模。
 - **[Scaling Laws](llm_basic_concepts/scaling_laws/scaling_laws.md)** — 从 Kaplan 到 Chinchilla 再到 MoE，参数、数据、算力的三角博弈。
+- **[把轨迹当状态：推理时间 Scaling 的一个新维度](llm_basic_concepts/scaling_laws/test_time_scaling.md)** — 推理侧 Scaling 已有采样/长度/搜索/迭代四类做法，这篇（Trace as State, arXiv:2609.02702）打开的是另一个维度：不改架构不训练，只把第一遍的推理轨迹挪到长上下文前面重读一遍，27 个实验组合赢 26 个；同时拆解它的收益构成与代价（状态前置伤前缀复用）。
 - **[模型量化 (Quantization)](llm_basic_concepts/quantization/visual_guide_to_quantization.md)** — FP16/INT8/INT4 等精度压缩路径，用于降低显存占用与推理延迟。
 - **[Token 机制](llm_basic_concepts/token/README.md)** — BPE / WordPiece 的切分逻辑、长度估算工具与成本控制实践。
 - **[幻觉 (Hallucination)](llm_basic_concepts/hallucination/llm_hallucination_and_mitigation.md)** — 幻觉的成因分层与检索/约束/校验三类缓解策略。
